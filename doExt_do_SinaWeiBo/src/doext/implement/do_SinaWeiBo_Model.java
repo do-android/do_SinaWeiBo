@@ -34,7 +34,7 @@ import com.sina.weibo.sdk.utils.Utility;
 
 import core.DoServiceContainer;
 import core.helper.DoIOHelper;
-import core.helper.jsonparse.DoJsonNode;
+import core.helper.DoJsonHelper;
 import core.interfaces.DoIScriptEngine;
 import core.object.DoInvokeResult;
 import core.object.DoSingletonModule;
@@ -76,7 +76,7 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 	 * @_invokeResult 用于返回方法结果对象
 	 */
 	@Override
-	public boolean invokeSyncMethod(String _methodName, DoJsonNode _dictParas, DoIScriptEngine _scriptEngine, DoInvokeResult _invokeResult) throws Exception {
+	public boolean invokeSyncMethod(String _methodName, JSONObject _dictParas, DoIScriptEngine _scriptEngine, DoInvokeResult _invokeResult) throws Exception {
 		// ...do something
 		return super.invokeSyncMethod(_methodName, _dictParas, _scriptEngine, _invokeResult);
 	}
@@ -95,7 +95,7 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 	 *                    DoInvokeResult(this.getUniqueKey());
 	 */
 	@Override
-	public boolean invokeAsyncMethod(String _methodName, DoJsonNode _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
+	public boolean invokeAsyncMethod(String _methodName, JSONObject _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
 		if ("login".equals(_methodName)) {
 			this.login(_dictParas, _scriptEngine, _callbackFuncName);
 			return true;
@@ -122,11 +122,11 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 	 * @_callbackFuncName 回调函数名
 	 */
 	@Override
-	public void getUserInfo(DoJsonNode _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
-		String _uid = _dictParas.getOneText("uid", "");
-		String _accessToken = _dictParas.getOneText("accessToken", "");
-		String _refreshToken = _dictParas.getOneText("refreshToken", "");
-		String _expires = _dictParas.getOneText("expires", "");
+	public void getUserInfo(JSONObject _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
+		String _uid = DoJsonHelper.getString(_dictParas,"uid", "");
+		String _accessToken = DoJsonHelper.getString(_dictParas,"accessToken", "");
+		String _refreshToken = DoJsonHelper.getString(_dictParas,"refreshToken", "");
+		String _expires = DoJsonHelper.getString(_dictParas,"expires", "");
 		Activity _activity = DoServiceContainer.getPageViewFactory().getAppContext();
 		if (!TextUtils.isEmpty(_uid) && !TextUtils.isEmpty(_accessToken) && !TextUtils.isEmpty(_refreshToken) && !TextUtils.isEmpty(_expires)) {
 			// 获取用户信息接口
@@ -182,8 +182,8 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 	 * @_callbackFuncName 回调函数名
 	 */
 	@Override
-	public void login(DoJsonNode _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
-		String _appId = _dictParas.getOneText("appId", "");
+	public void login(JSONObject _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
+		String _appId = DoJsonHelper.getString(_dictParas,"appId", "");
 		if (TextUtils.isEmpty(_appId))
 			throw new Exception("appId 不能为空");
 		Activity _activity = DoServiceContainer.getPageViewFactory().getAppContext();
@@ -224,13 +224,12 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 				return;
 			}
 
-			DoJsonNode _value = new DoJsonNode();
-			_value.setOneText("uid", values.getString("uid"));
-			_value.setOneText("access_token", values.getString("access_token"));
-			_value.setOneText("refresh_token", values.getString("refresh_token"));
-			_value.setOneText("expires_in", values.getString("expires_in"));
-
 			try {
+				JSONObject _value = new JSONObject();
+				_value.put("uid", values.getString("uid"));
+				_value.put("access_token", values.getString("access_token"));
+				_value.put("refresh_token", values.getString("refresh_token"));
+				_value.put("expires_in", values.getString("expires_in"));
 				invokeResult.setResultNode(_value);
 			} catch (Exception e) {
 				invokeResult.setException(e);
@@ -266,7 +265,7 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 	 * @_callbackFuncName 回调函数名
 	 */
 	@Override
-	public void logout(DoJsonNode _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) {
+	public void logout(JSONObject _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) {
 		Activity _activity = DoServiceContainer.getPageViewFactory().getAppContext();
 		new LogoutAPI(_activity, mAuthInfo.getAppKey(), AccessTokenKeeper.readAccessToken(_activity)).logout(new LogOutRequestListener(_activity, _scriptEngine, _callbackFuncName));
 	}
@@ -314,8 +313,8 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 	}
 
 	@Override
-	public void share(DoJsonNode _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
-		String _appId = _dictParas.getOneText("appId", "");
+	public void share(JSONObject _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
+		String _appId = DoJsonHelper.getString(_dictParas,"appId", "");
 		if (TextUtils.isEmpty(_appId))
 			throw new Exception("appId 不能为空");
 		Activity _activity = DoServiceContainer.getPageViewFactory().getAppContext();
@@ -324,11 +323,11 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 		// 注册到新浪微博
 		mWeiboShareAPI.registerApp();
 
-		int _shareType = _dictParas.getOneInteger("type", 0); // 分享的类型 0：默认，图文分享；1：网页分享；2：音乐分享；3：视频分享；4：音频分享；
-		String _title = _dictParas.getOneText("title", ""); // 标题 分享的标题, 最长30个字符
-		String _actionUrl = _dictParas.getOneText("url", ""); // 文件的远程链接, 以URL的形式传入
-		String _imageUrl = _dictParas.getOneText("image", ""); // 图片地址 分享后显示的图片
-		String _summary = _dictParas.getOneText("summary", ""); // 摘要分享的消息摘要，最长40个字
+		int _shareType = DoJsonHelper.getInt(_dictParas,"type", 0); // 分享的类型 0：默认，图文分享；1：网页分享；2：音乐分享；3：视频分享；4：音频分享；
+		String _title = DoJsonHelper.getString(_dictParas,"title", ""); // 标题 分享的标题, 最长30个字符
+		String _actionUrl = DoJsonHelper.getString(_dictParas,"url", ""); // 文件的远程链接, 以URL的形式传入
+		String _imageUrl = DoJsonHelper.getString(_dictParas,"image", ""); // 图片地址 分享后显示的图片
+		String _summary = DoJsonHelper.getString(_dictParas,"summary", ""); // 摘要分享的消息摘要，最长40个字
 
 		Bitmap _image = getBitmap(_imageUrl, _scriptEngine);
 		WeiboMultiMessage _weiboMessage = null;
