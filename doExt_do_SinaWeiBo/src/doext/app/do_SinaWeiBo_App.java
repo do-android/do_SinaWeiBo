@@ -34,5 +34,10 @@ public class do_SinaWeiBo_App implements DoIAppDelegate {
 	public void setModuleTypeID(String moduleTypeID) {
 		this.moduleTypeID = moduleTypeID;
 	}
+	
+	@Override
+	public String getTypeID() {
+		return getModuleTypeID();
+	}
 
 }
