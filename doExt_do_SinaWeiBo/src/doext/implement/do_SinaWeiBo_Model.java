@@ -1,44 +1,29 @@
 package doext.implement;
 
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-
 import org.json.JSONObject;
 
 import android.app.Activity;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.content.ComponentName;
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.widget.Toast;
 
-import com.sina.weibo.sdk.api.ImageObject;
-import com.sina.weibo.sdk.api.MusicObject;
-import com.sina.weibo.sdk.api.TextObject;
-import com.sina.weibo.sdk.api.VideoObject;
-import com.sina.weibo.sdk.api.VoiceObject;
-import com.sina.weibo.sdk.api.WebpageObject;
-import com.sina.weibo.sdk.api.WeiboMultiMessage;
-import com.sina.weibo.sdk.api.share.IWeiboShareAPI;
-import com.sina.weibo.sdk.api.share.SendMultiMessageToWeiboRequest;
-import com.sina.weibo.sdk.api.share.WeiboShareSDK;
 import com.sina.weibo.sdk.auth.AuthInfo;
 import com.sina.weibo.sdk.auth.Oauth2AccessToken;
 import com.sina.weibo.sdk.auth.WeiboAuthListener;
 import com.sina.weibo.sdk.auth.sso.SsoHandler;
 import com.sina.weibo.sdk.exception.WeiboException;
 import com.sina.weibo.sdk.net.RequestListener;
-import com.sina.weibo.sdk.utils.Utility;
 
 import core.DoServiceContainer;
 import core.helper.DoIOHelper;
 import core.helper.DoJsonHelper;
+import core.interfaces.DoActivityResultListener;
+import core.interfaces.DoIPageView;
 import core.interfaces.DoIScriptEngine;
 import core.object.DoInvokeResult;
 import core.object.DoSingletonModule;
-import doext.app.do_SinaWeiBo_App;
 import doext.define.do_SinaWeiBo_IMethod;
 import doext.sina.weibo.openapi.AccessTokenKeeper;
 import doext.sina.weibo.openapi.Constants;
@@ -53,18 +38,18 @@ import doext.sina.weibo.openapi.models.ErrorInfo;
  * 参数解释：@_messageName字符串事件名称，@jsonResult传递事件参数对象； 获取DoInvokeResult对象方式new
  * DoInvokeResult(this.getUniqueKey());
  */
-public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiBo_IMethod {
+public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiBo_IMethod, DoActivityResultListener {
 
 	private AuthInfo mAuthInfo;
 	/** SSO 授权认证实例 */
 	private SsoHandler mSsoHandler;
 
-	/** 微博分享的接口实例 */
-	private IWeiboShareAPI mWeiboShareAPI;
+	private DoActivityResultListener activityResultListener;
+	private DoIPageView doActivity;
 
 	public do_SinaWeiBo_Model() throws Exception {
 		super();
-		do_SinaWeiBo_App.getInstance().setModuleTypeID(getTypeID());
+		activityResultListener = this;
 	}
 
 	/**
@@ -123,13 +108,14 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 	 */
 	@Override
 	public void getUserInfo(JSONObject _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
-		String _uid = DoJsonHelper.getString(_dictParas,"uid", "");
-		String _accessToken = DoJsonHelper.getString(_dictParas,"accessToken", "");
-		String _refreshToken = DoJsonHelper.getString(_dictParas,"refreshToken", "");
-		String _expires = DoJsonHelper.getString(_dictParas,"expires", "");
+		String _uid = DoJsonHelper.getString(_dictParas, "uid", "");
+		String _accessToken = DoJsonHelper.getString(_dictParas, "accessToken", "");
+		String _refreshToken = DoJsonHelper.getString(_dictParas, "refreshToken", "");
+		String _expires = DoJsonHelper.getString(_dictParas, "expires", "");
 		Activity _activity = DoServiceContainer.getPageViewFactory().getAppContext();
 		if (!TextUtils.isEmpty(_uid) && !TextUtils.isEmpty(_accessToken) && !TextUtils.isEmpty(_refreshToken) && !TextUtils.isEmpty(_expires)) {
 			// 获取用户信息接口
+
 			Oauth2AccessToken accessToken = new Oauth2AccessToken();
 			accessToken.setUid(_uid);
 			accessToken.setExpiresIn(_expires);
@@ -183,10 +169,13 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 	 */
 	@Override
 	public void login(JSONObject _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
-		String _appId = DoJsonHelper.getString(_dictParas,"appId", "");
+		String _appId = DoJsonHelper.getString(_dictParas, "appId", "");
 		if (TextUtils.isEmpty(_appId))
 			throw new Exception("appId 不能为空");
 		Activity _activity = DoServiceContainer.getPageViewFactory().getAppContext();
+
+		doActivity = _scriptEngine.getCurrentPage().getPageView();
+		doActivity.registActivityResultListener(this);
 		// 创建授权认证信息
 		if (mAuthInfo == null) {
 			mAuthInfo = new AuthInfo(_activity, _appId, Constants.REDIRECT_URL, Constants.SCOPE);
@@ -235,6 +224,7 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 				invokeResult.setException(e);
 			} finally {
 				scriptEngine.callback(callbackFuncName, invokeResult);
+				doActivity.unregistActivityResultListener(activityResultListener);
 			}
 
 			Oauth2AccessToken accessToken = Oauth2AccessToken.parseAccessToken(values);
@@ -312,181 +302,69 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 		}
 	}
 
+	private DoIScriptEngine scriptEngineShared;
+	private String callbackFuncName;
+
 	@Override
 	public void share(JSONObject _dictParas, DoIScriptEngine _scriptEngine, String _callbackFuncName) throws Exception {
-		String _appId = DoJsonHelper.getString(_dictParas,"appId", "");
+		String _appId = DoJsonHelper.getString(_dictParas, "appId", "");
 		if (TextUtils.isEmpty(_appId))
 			throw new Exception("appId 不能为空");
+		this.scriptEngineShared = _scriptEngine;
+		this.callbackFuncName = _callbackFuncName;
 		Activity _activity = DoServiceContainer.getPageViewFactory().getAppContext();
-		// 创建微博 SDK 接口实例
-		mWeiboShareAPI = WeiboShareSDK.createWeiboAPI(_activity, _appId);
-		// 注册到新浪微博
-		mWeiboShareAPI.registerApp();
-
-		int _shareType = DoJsonHelper.getInt(_dictParas,"type", 0); // 分享的类型 0：默认，图文分享；1：网页分享；2：音乐分享；3：视频分享；4：音频分享；
-		String _title = DoJsonHelper.getString(_dictParas,"title", ""); // 标题 分享的标题, 最长30个字符
-		String _actionUrl = DoJsonHelper.getString(_dictParas,"url", ""); // 文件的远程链接, 以URL的形式传入
-		String _imageUrl = DoJsonHelper.getString(_dictParas,"image", ""); // 图片地址 分享后显示的图片
-		String _summary = DoJsonHelper.getString(_dictParas,"summary", ""); // 摘要分享的消息摘要，最长40个字
-
-		Bitmap _image = getBitmap(_imageUrl, _scriptEngine);
-		WeiboMultiMessage _weiboMessage = null;
-		switch (_shareType) {
-		case 1: // 网页分享
-			_weiboMessage = new WeiboMultiMessage();
-			WebpageObject _webpageObject = new WebpageObject();
-			_webpageObject.identify = Utility.generateGUID();
-			_webpageObject.title = _title;
-			_webpageObject.description = _summary;
-			_webpageObject.setThumbImage(_image);
-			_webpageObject.actionUrl = _actionUrl;
-			_webpageObject.defaultText = "Webpage 默认文本";
-			_weiboMessage.mediaObject = _webpageObject;
-			break;
-		case 2: // 音乐分享
-			_weiboMessage = new WeiboMultiMessage();
-			MusicObject _musicObject = new MusicObject();
-			_musicObject.identify = Utility.generateGUID();
-			_musicObject.title = _title;
-			_musicObject.description = _summary;
-			_musicObject.setThumbImage(_image);
-			_musicObject.actionUrl = _actionUrl;
-			_musicObject.dataUrl = "www.weibo.com";
-			_musicObject.dataHdUrl = "www.weibo.com";
-			_musicObject.duration = 10;
-			_musicObject.defaultText = "Music 默认文案";
-			_weiboMessage.mediaObject = _musicObject;
-			break;
-		case 3: // 视频分享
-			_weiboMessage = new WeiboMultiMessage();
-
-			VideoObject _videoObject = new VideoObject();
-			_videoObject.identify = Utility.generateGUID();
-			_videoObject.title = _title;
-			_videoObject.description = _summary;
-			_videoObject.setThumbImage(_image);
-			_videoObject.actionUrl = _actionUrl;
-			_videoObject.dataUrl = "www.weibo.com";
-			_videoObject.dataHdUrl = "www.weibo.com";
-			_videoObject.duration = 10;
-			_videoObject.defaultText = "Video 默认文案";
-			_weiboMessage.mediaObject = _videoObject;
-
-			break;
-		case 4: // 音频分享
-			_weiboMessage = new WeiboMultiMessage();
-
-			VoiceObject _voiceObject = new VoiceObject();
-			_voiceObject.identify = Utility.generateGUID();
-			_voiceObject.title = _title;
-			_voiceObject.description = _summary;
-			_voiceObject.setThumbImage(_image);
-			_voiceObject.actionUrl = _actionUrl;
-			_voiceObject.dataUrl = "www.weibo.com";
-			_voiceObject.dataHdUrl = "www.weibo.com";
-			_voiceObject.duration = 10;
-			_voiceObject.defaultText = "Voice 默认文案";
-			_weiboMessage.mediaObject = _voiceObject;
-
-			break;
-		default:
-			_weiboMessage = new WeiboMultiMessage();
-			TextObject _textObject = new TextObject();
-			_textObject.text = _title;
-			_weiboMessage.textObject = _textObject;
-			if (null == DoIOHelper.getHttpUrlPath(_imageUrl)) {
-				_imageUrl = DoIOHelper.getLocalFileFullPath(_scriptEngine.getCurrentApp(), _imageUrl);
-			} else {
-				throw new Exception("纯图分享，只支持选择本地图片");
-			}
-			if (!TextUtils.isEmpty(_imageUrl)) {
-				ImageObject _imageObject = new ImageObject(); // 只支持本地的图片
-				_imageObject.imagePath = _imageUrl;
-				_weiboMessage.imageObject = _imageObject;
-			}
-			break;
-		}
-
-		sendMessage(_scriptEngine, _callbackFuncName, _weiboMessage, _activity, _appId);
-	}
-
-	/**
-	 * 第三方应用发送请求消息到微博，唤起微博分享界面。 注意：当
-	 * {@link IWeiboShareAPI#getWeiboAppSupportAPI()} >= 10351 时，支持同时分享多条消息，
-	 * 同时可以分享文本、图片以及其它媒体资源（网页、音乐、视频、声音中的一种）。
-	 */
-	private void sendMessage(final DoIScriptEngine _scriptEngine, final String _callbackFuncName, WeiboMultiMessage weiboMessage, final Activity activity, String appKey) {
-		// 2. 初始化从第三方到微博的消息请求
-		SendMultiMessageToWeiboRequest request = new SendMultiMessageToWeiboRequest();
-		// 用transaction唯一标识一个请求
-		request.transaction = String.valueOf(System.currentTimeMillis());
-		request.multiMessage = weiboMessage;
-
-		// 3. 发送请求消息到微博，唤起微博分享界面
-//		if (mWeiboShareAPI.isWeiboAppInstalled()) {
-//			mWeiboShareAPI.sendRequest(activity, request);
-//		} else {
-			AuthInfo authInfo = new AuthInfo(activity, appKey, Constants.REDIRECT_URL, Constants.SCOPE);
-			Oauth2AccessToken accessToken = AccessTokenKeeper.readAccessToken(activity.getApplicationContext());
-			String token = "";
-			if (accessToken != null) {
-				token = accessToken.getToken();
-			}
-	
-			final DoInvokeResult _invokeResult = new DoInvokeResult(do_SinaWeiBo_Model.this.getUniqueKey());
-			mWeiboShareAPI.sendRequest(activity, request, authInfo, token, new WeiboAuthListener() {
-				@Override
-				public void onWeiboException(WeiboException arg0) {
-					_invokeResult.setResultBoolean(false);
-					_scriptEngine.callback(_callbackFuncName, _invokeResult);
-				}
-	
-				@Override
-				public void onComplete(Bundle bundle) {
-					Oauth2AccessToken newToken = Oauth2AccessToken.parseAccessToken(bundle);
-					AccessTokenKeeper.writeAccessToken(activity.getApplicationContext(), newToken);
-					_invokeResult.setResultBoolean(true);
-					_scriptEngine.callback(_callbackFuncName, _invokeResult);
-				}
-	
-				@Override
-				public void onCancel() {
-	
-				}
-			});
-//		}
-	}
-
-	private Bitmap getBitmap(String _imageUrl, DoIScriptEngine _scriptEngine) throws Exception {
-		if (null == DoIOHelper.getHttpUrlPath(_imageUrl)) {
+		doActivity = _scriptEngine.getCurrentPage().getPageView();
+		doActivity.registActivityResultListener(this);
+		int _shareType = DoJsonHelper.getInt(_dictParas, "type", 0); // 分享的类型
+																		// 0：默认，图文分享；1：网页分享；2：音乐分享；3：视频分享；4：音频分享；
+		String _title = DoJsonHelper.getString(_dictParas, "title", ""); // 标题
+																			// 分享的标题,
+																			// 最长30个字符
+		String _actionUrl = DoJsonHelper.getString(_dictParas, "url", ""); // 文件的远程链接,
+																			// 以URL的形式传入
+		String _imageUrl = DoJsonHelper.getString(_dictParas, "image", ""); // 图片地址
+																			// 分享后显示的图片
+		String _summary = DoJsonHelper.getString(_dictParas, "summary", ""); // 摘要分享的消息摘要，最长40个字
+		if (!_imageUrl.equals("") && null == DoIOHelper.getHttpUrlPath(_imageUrl)) {
 			_imageUrl = DoIOHelper.getLocalFileFullPath(_scriptEngine.getCurrentApp(), _imageUrl);
-		} else {
-			throw new Exception("纯图分享，只支持选择本地图片");
 		}
-		if (TextUtils.isEmpty(_imageUrl)) {
-			throw new Exception("分享图片不能为空");
-		}
-		return revitionImageSize(_imageUrl, 768, 1024);
+
+		String _packageName = _activity.getPackageName();
+		ComponentName _componetName = new ComponentName(_packageName, "doext.implement.DoSinaSharedActivity");
+		Intent i = new Intent();
+		i.putExtra("appId", _appId);
+		i.putExtra("type", _shareType);
+		i.putExtra("url", _actionUrl);
+		i.putExtra("title", _title);
+		i.putExtra("image", _imageUrl);
+		i.putExtra("summary", _summary);
+		i.setComponent(_componetName);
+		_activity.startActivityForResult(i, 200);
+
 	}
 
-	private Bitmap revitionImageSize(String path, int maxWidth, int maxHeight) throws IOException {
-		BufferedInputStream in = new BufferedInputStream(new FileInputStream(new File(path)));
-		BitmapFactory.Options options = new BitmapFactory.Options();
-		options.inJustDecodeBounds = true;
-		BitmapFactory.decodeStream(in, null, options);
-		in.close();
-		int i = 0;
-		Bitmap bitmap = null;
-		while (true) {
-			if ((options.outWidth >> i <= maxWidth) && (options.outHeight >> i <= maxHeight)) {
-				in = new BufferedInputStream(new FileInputStream(new File(path)));
-				options.inSampleSize = (int) Math.pow(2.0D, i);
-				options.inJustDecodeBounds = false;
-				bitmap = BitmapFactory.decodeStream(in, null, options);
-				break;
-			}
-			i += 1;
-		}
-		return bitmap;
+	private void sharedResult(boolean sharedTag) {
+		DoInvokeResult _invokeResult = new DoInvokeResult(do_SinaWeiBo_Model.this.getUniqueKey());
+		_invokeResult.setResultBoolean(sharedTag);
+		scriptEngineShared.callback(callbackFuncName, _invokeResult);
+		doActivity.unregistActivityResultListener(activityResultListener);
 	}
+
+	@Override
+	public void onActivityResult(int requestCode, int resultCode, Intent data) {
+		// SSO 授权回调
+		// 重要：发起 SSO 登陆的 Activity 必须重写 onActivityResults
+		if (mSsoHandler != null) {
+			mSsoHandler.authorizeCallBack(requestCode, resultCode, data);
+		}
+		if (resultCode == 200) {
+			String _result = data.getExtras().getString("result");
+			if (_result.equals("ERR_OK")) {
+				sharedResult(true);
+			} else {
+				sharedResult(false);
+			}
+		}
+	}
+
 }
