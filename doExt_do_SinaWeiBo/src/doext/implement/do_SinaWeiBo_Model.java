@@ -44,12 +44,10 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 	/** SSO 授权认证实例 */
 	private SsoHandler mSsoHandler;
 
-	private DoActivityResultListener activityResultListener;
 	private DoIPageView doActivity;
 
 	public do_SinaWeiBo_Model() throws Exception {
 		super();
-		activityResultListener = this;
 	}
 
 	/**
@@ -224,7 +222,7 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 				invokeResult.setException(e);
 			} finally {
 				scriptEngine.callback(callbackFuncName, invokeResult);
-				doActivity.unregistActivityResultListener(activityResultListener);
+				doActivity.unregistActivityResultListener(do_SinaWeiBo_Model.this);
 			}
 
 			Oauth2AccessToken accessToken = Oauth2AccessToken.parseAccessToken(values);
@@ -347,7 +345,7 @@ public class do_SinaWeiBo_Model extends DoSingletonModule implements do_SinaWeiB
 		DoInvokeResult _invokeResult = new DoInvokeResult(do_SinaWeiBo_Model.this.getUniqueKey());
 		_invokeResult.setResultBoolean(sharedTag);
 		scriptEngineShared.callback(callbackFuncName, _invokeResult);
-		doActivity.unregistActivityResultListener(activityResultListener);
+		doActivity.unregistActivityResultListener(this);
 	}
 
 	@Override
